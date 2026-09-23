@@ -10,6 +10,7 @@ export const dedupeService = {
         const filteredPayloads = await Promise.all(payloads.map(async (payload) => isDuplicated(flowVersionId, payload)))
         return payloads.filter((_, index) => !filteredPayloads[index]).map(removeDedupeKey)
     },
+    stripDedupeKeys: (payloads: unknown[]): unknown[] => payloads.map(removeDedupeKey),
 }
 
 const isDuplicated = async (flowVersionId: string, payload: unknown) => {

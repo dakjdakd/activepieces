@@ -75,3 +75,65 @@ describe('pollingHelper.onEnable checkpoint preservation', () => {
         })
     })
 })
+
+describe('pollingHelper.poll checkpoint delivery', () => {
+    const files = {
+        write: async () => '',
+        upload: async () => ({ id: '', url: '' }),
+    }
+
+    it('defers the timebased checkpoint until payload submission', async () => {
+        const deferPollingCheckpoint = vi.fn()
+        const store = { ...fakeStore({ lastPoll: 1000 }), deferPollingCheckpoint }
+        const polling: Polling<undefined, unknown> = {
+            strategy: DedupeStrategy.TIMEBASED,
+            items: async () => [{ epochMilliSeconds: 2000, data: { id: 'event-1' } }],
+        }
+
+        const output = await pollingHelper.poll(polling, { store, auth: undefined, propsValue: {}, files })
+
+        expect(output).toEqual([{ id: 'event-1' }])
+        expect(deferPollingCheckpoint).toHaveBeenCalledWith('lastPoll', 2000)
+        expect(await store.get('lastPoll')).toBe(1000)
+    })
+
+    it('does not submit an unchanged timebased checkpoint', async () => {
+        const deferPollingCheckpoint = vi.fn()
+        const store = { ...fakeStore({ lastPoll: 1000 }), deferPollingCheckpoint }
+
+        const output = await pollingHelper.poll(timebasedPolling, { store, auth: undefined, propsValue: {}, files })
+
+        expect(output).toEqual([])
+        expect(deferPollingCheckpoint).not.toHaveBeenCalled()
+    })
+
+    it('persists a checkpoint when no submission context is available', async () => {
+        const store = fakeStore({ lastPoll: 1000 })
+        const polling: Polling<undefined, unknown> = {
+            strategy: DedupeStrategy.TIMEBASED,
+            items: async () => [{ epochMilliSeconds: 2000, data: { id: 'event-1' } }],
+        }
+
+        await pollingHelper.poll(polling, { store, auth: undefined, propsValue: {}, files })
+
+        expect(await store.get('lastPoll')).toBe(2000)
+    })
+
+    it('defers the last-item checkpoint until payload submission', async () => {
+        const deferPollingCheckpoint = vi.fn()
+        const store = { ...fakeStore({ lastItem: 'previous' }), deferPollingCheckpoint }
+        const polling: Polling<undefined, unknown> = {
+            strategy: DedupeStrategy.LAST_ITEM,
+            items: async () => [
+                { id: 'newest', data: { id: 'event-1' } },
+                { id: 'previous', data: { id: 'event-0' } },
+            ],
+        }
+
+        const output = await pollingHelper.poll(polling, { store, auth: undefined, propsValue: {}, files })
+
+        expect(output).toEqual([{ id: 'event-1' }])
+        expect(deferPollingCheckpoint).toHaveBeenCalledWith('lastItem', 'newest')
+        expect(await store.get('lastItem')).toBe('previous')
+    })
+})

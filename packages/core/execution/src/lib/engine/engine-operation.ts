@@ -198,6 +198,7 @@ export type AppEventListener = {
 type ExecuteTestOrRunTriggerResponse = {
     message?: string
     output: unknown[]
+    pollingCheckpoint?: PollingCheckpoint
 }
 
 type ExecuteHandshakeTriggerResponse = {
@@ -326,4 +327,9 @@ export enum EngineResponseStatus {
     TIMEOUT = 'TIMEOUT',
     MEMORY_ISSUE = 'MEMORY_ISSUE',
     LOG_SIZE_EXCEEDED = 'LOG_SIZE_EXCEEDED',
+}
+
+export type PollingCheckpoint = {
+    key: 'lastPoll' | 'lastItem'
+    value: unknown
 }

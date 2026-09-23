@@ -80,7 +80,13 @@ export const pollingHelper = {
           (acc, item) => Math.max(acc, item.epochMilliSeconds),
           lastEpochMilliSeconds
         );
-        await store.put('lastPoll', newLastEpochMilliSeconds);
+        if (newLastEpochMilliSeconds !== lastEpochMilliSeconds) {
+          if (store.deferPollingCheckpoint) {
+            await store.deferPollingCheckpoint('lastPoll', newLastEpochMilliSeconds);
+          } else {
+            await store.put('lastPoll', newLastEpochMilliSeconds);
+          }
+        }
         return items
           .filter((f) => f.epochMilliSeconds > lastEpochMilliSeconds)
           .map((item) => item.data);
@@ -110,7 +116,11 @@ export const pollingHelper = {
         }
         const newLastItem = newItems?.[0]?.id;
         if (!isNil(newLastItem)) {
-          await store.put('lastItem', newLastItem);
+          if (store.deferPollingCheckpoint) {
+            await store.deferPollingCheckpoint('lastItem', newLastItem);
+          } else {
+            await store.put('lastItem', newLastItem);
+          }
         }
         return newItems.map((item) => item.data);
       }

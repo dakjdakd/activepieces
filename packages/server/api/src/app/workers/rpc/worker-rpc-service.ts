@@ -1,7 +1,8 @@
 import { assertNotNullOrUndefined, isNil, spreadIfDefined } from '@activepieces/core-utils'
 import { apVersionUtil, onCallService, UNKNOWN_VERSION } from '@activepieces/server-utils'
-import { ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, WebsocketClientEvent, WorkerGroupScope, WorkerToApiContract } from '@activepieces/shared'
+import { ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, StorageLimitError, STORE_VALUE_MAX_SIZE, WebsocketClientEvent, WorkerGroupScope, WorkerToApiContract } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
+import sizeof from 'object-sizeof'
 import { aiRpcHandlers } from '../../ai/ai-rpc-handlers'
 import { websocketService } from '../../core/websockets.service'
 import { distributedStore, redisConnections } from '../../database/redis-connections'
@@ -26,6 +27,7 @@ import { dedupeService } from '../../trigger/dedupe-service'
 import { triggerEventService } from '../../trigger/trigger-events/trigger-event.service'
 import { triggerRunStats } from '../../trigger/trigger-run/trigger-run-stats'
 import { triggerSourceService } from '../../trigger/trigger-source/trigger-source-service'
+import { storeEntryService } from '../../store-entry/store-entry.service'
 import { getPlatformGroupQueueName, getProjectGroupQueueName, QueueName, WorkerGroupAssignment } from '../job'
 import { jobBroker } from '../job-queue/job-broker'
 import { machineService } from '../machine/machine-service'
@@ -107,7 +109,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async submitPayloads(input) {
-            const { flowVersionId, projectId, payloads, httpRequestId, streamStepProgress, environment, parentRunId, failParentOnFailure } = input
+            const { flowVersionId, projectId, payloads, httpRequestId, streamStepProgress, environment, parentRunId, failParentOnFailure, pollingCheckpoint } = input
 
             const flowVersion = await flowVersionService(log).getOne(flowVersionId)
             if (!flowVersion) {
@@ -115,7 +117,19 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
             }
 
             const platformId = await projectService(log).getPlatformId(projectId)
-            const filterPayloads = await dedupeService.filterUniquePayloads(flowVersionId, payloads)
+            if (pollingCheckpoint && (
+                (pollingCheckpoint.key !== 'lastPoll' && pollingCheckpoint.key !== 'lastItem')
+                || isNil(pollingCheckpoint.value)
+                || (pollingCheckpoint.key === 'lastPoll' && (typeof pollingCheckpoint.value !== 'number' || !Number.isFinite(pollingCheckpoint.value)))
+            )) {
+                throw new Error('Invalid polling checkpoint')
+            }
+            if (pollingCheckpoint && sizeof(pollingCheckpoint.value) > STORE_VALUE_MAX_SIZE) {
+                throw new StorageLimitError(pollingCheckpoint.key, STORE_VALUE_MAX_SIZE)
+            }
+            const filterPayloads = pollingCheckpoint
+                ? dedupeService.stripDedupeKeys(payloads)
+                : await dedupeService.filterUniquePayloads(flowVersionId, payloads)
 
             const creditsExhausted = await shouldBlockRunOnCredits({
                 platformId,
@@ -152,6 +166,15 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
                         }),
                 ),
             )
+            if (pollingCheckpoint) {
+                await storeEntryService.upsert({
+                    projectId,
+                    request: {
+                        key: `flow_${flowVersion.flowId}/${pollingCheckpoint.key}`,
+                        value: pollingCheckpoint.value,
+                    },
+                })
+            }
             return flowRuns
         },
 

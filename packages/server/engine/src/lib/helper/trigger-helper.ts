@@ -1,6 +1,6 @@
 import { assertEqual, isNil } from '@activepieces/core-utils'
 import { PiecePropertyMap, SetScheduleRequest, StaticPropsValue, TriggerStrategy } from '@activepieces/pieces-framework'
-import { AUTHENTICATION_PROPERTY_NAME, EngineGenericError, EventPayload, ExecuteTriggerResponse, FlowTrigger, InvalidCronExpressionError, InvalidScheduleIntervalError, PieceTrigger, PropertySettings, ScheduleOptions, TriggerHookType, TriggerSourceScheduleType } from '@activepieces/shared'
+import { AUTHENTICATION_PROPERTY_NAME, EngineGenericError, EventPayload, ExecuteTriggerResponse, FlowTrigger, InvalidCronExpressionError, InvalidScheduleIntervalError, PieceTrigger, PollingCheckpoint, PropertySettings, ScheduleOptions, TriggerHookType, TriggerSourceScheduleType } from '@activepieces/shared'
 import { isValidCron } from 'cron-validator'
 import { EngineConstants, ResolvedExecuteTriggerOperation } from '../handler/context/engine-constants'
 import { FlowExecutorContext } from '../handler/context/flow-execution-context'
@@ -97,13 +97,22 @@ export const triggerHelper = {
         const appListeners: Listener[] = []
         const prefix = params.test ? 'test' : ''
         let scheduleOptions: ScheduleOptions | undefined = undefined
+        let pollingCheckpoint: PollingCheckpoint | undefined
+        const store = createContextStore({
+            apiUrl: constants.internalApiUrl,
+            prefix,
+            flowId: params.flowVersion.flowId,
+            engineToken: params.engineToken,
+        })
         const context = {
-            store: createContextStore({
-                apiUrl: constants.internalApiUrl,
-                prefix,
-                flowId: params.flowVersion.flowId,
-                engineToken: params.engineToken,
-            }),
+            store: pieceTrigger.type === TriggerStrategy.POLLING && params.hookType === TriggerHookType.RUN
+                ? {
+                    ...store,
+                    async deferPollingCheckpoint(key: 'lastPoll' | 'lastItem', value: unknown): Promise<void> {
+                        pollingCheckpoint = { key, value }
+                    },
+                }
+                : store,
             step: {
                 name: triggerName,
             },
@@ -241,6 +250,7 @@ export const triggerHelper = {
                     })
                     return {
                         output: items,
+                        pollingCheckpoint,
                     }
                 })
 

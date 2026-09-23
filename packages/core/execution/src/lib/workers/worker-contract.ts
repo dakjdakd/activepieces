@@ -1,6 +1,6 @@
 import { ActivepiecesAiBilling, AiChargeBasis, AIProviderName, AiProviderCredentials } from '@activepieces/core-utils'
 import { AgentPieceToolMetadata, PiecePackage } from '@activepieces/core-piece-types'
-import { StreamStepProgress } from '../engine/engine-operation'
+import { PollingCheckpoint, StreamStepProgress } from '../engine/engine-operation'
 import { GetFlowVersionForWorkerRequest, UploadRunLogsRequest } from '../engine/requests'
 import { FlowRun, RunEnvironment } from '../flow-run/flow-run'
 import { SourceCode } from '../flows/actions/action'
@@ -19,6 +19,7 @@ export type SubmitPayloadsRequest = {
     streamStepProgress: StreamStepProgress
     parentRunId?: string
     failParentOnFailure?: boolean
+    pollingCheckpoint?: PollingCheckpoint
 }
 
 export type SavePayloadRequest = {

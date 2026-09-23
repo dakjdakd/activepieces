@@ -312,6 +312,7 @@ export interface Store {
   put<T>(key: string, value: T, scope?: StoreScope): Promise<T>;
   get<T>(key: string, scope?: StoreScope): Promise<T | null>;
   delete(key: string, scope?: StoreScope): Promise<void>;
+  deferPollingCheckpoint?(key: 'lastPoll' | 'lastItem', value: unknown): Promise<void>;
 }
 
 export enum StoreScope {

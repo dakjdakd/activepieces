@@ -50,13 +50,14 @@ export const executePollingJob: JobHandler<PollingJobData, FireAndForgetJobResul
 
             if (result.status === EngineResponseStatus.OK) {
                 const triggerResult = result.response as ExecuteTriggerResponse<TriggerHookType.RUN>
-                if (triggerResult.output.length > 0) {
+                if (triggerResult.output.length > 0 || triggerResult.pollingCheckpoint) {
                     await ctx.apiClient.submitPayloads({
                         flowVersionId: data.flowVersionId,
                         projectId: data.projectId,
                         payloads: triggerResult.output,
                         environment: RunEnvironment.PRODUCTION,
                         streamStepProgress: StreamStepProgress.NONE,
+                        pollingCheckpoint: triggerResult.pollingCheckpoint,
                     })
                 }
             }
